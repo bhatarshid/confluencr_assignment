@@ -10,6 +10,46 @@ Production-grade asynchronous transaction webhook ingestion service and durable 
 
 ---
 
+## 📦 Assessment Deliverables
+
+| Deliverable | Details & Links |
+| :--- | :--- |
+| **Public Live Cloud API** | **[https://transaction-webhook-api.onrender.com](https://transaction-webhook-api.onrender.com)** |
+| **Interactive API Documentation** | **[https://transaction-webhook-api.onrender.com/docs](https://transaction-webhook-api.onrender.com/docs)** (Swagger UI) |
+| **Public GitHub Repository** | **[https://github.com/bhatarshid/confluencr_assignment](https://github.com/bhatarshid/confluencr_assignment)** |
+| **Automated Test Suite** | **38 / 38 Tests Passing** (`pytest -v`) across 4 test modules |
+| **Target Database** | Supabase PostgreSQL (`confluencr_asgnmt` schema) via IPv4 Connection Pooler |
+| **Worker Architecture** | Durable PostgreSQL queue using `FOR UPDATE SKIP LOCKED` with 30s delay simulation |
+
+### Quick Live Cloud Verification (Try It Right Now)
+
+```bash
+# 1. Check Liveness
+curl -i https://transaction-webhook-api.onrender.com/
+
+# 2. Check Supabase Database Readiness
+curl -i https://transaction-webhook-api.onrender.com/health/ready
+
+# 3. Submit a Transaction Webhook (< 500ms response)
+curl -i -X POST https://transaction-webhook-api.onrender.com/v1/webhooks/transactions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "transaction_id": "live-demo-100",
+    "source_account": "acc_sender_1",
+    "destination_account": "acc_receiver_2",
+    "amount": 500.00,
+    "currency": "USD"
+  }'
+
+# 4. Check status immediately (PROCESSING, processed_at: null)
+curl -i https://transaction-webhook-api.onrender.com/v1/transactions/live-demo-100
+
+# 5. Check status after 30 seconds (PROCESSED, processed_at populated)
+curl -i https://transaction-webhook-api.onrender.com/v1/transactions/live-demo-100
+```
+
+---
+
 ## 1. Project Purpose & Assessment Context
 
 The objective of this application is to serve as a high-reliability webhook ingestion and background processing service that receives financial transaction webhooks from external payment processors, acknowledges them immediately (`HTTP 202 Accepted` within 500ms), and processes them asynchronously via a dedicated background worker simulating external processing (30-second delay) while guaranteeing idempotency, persistence, retries, and auditability.
@@ -28,20 +68,47 @@ The objective of this application is to serve as a high-reliability webhook inge
 > - **Phase 1 (Completed):** Modular FastAPI foundation, Pydantic Settings, connection-pooled database layer, liveness and readiness probes, and unit tests.
 > - **Phase 2 (Completed):** Webhook ingestion (`POST /v1/webhooks/transactions`), status lookup (`GET /v1/transactions/{transaction_id}`), Pydantic validation, database-level uniqueness idempotency, conflict detection, and 27 automated tests.
 > - **Phase 3 (Completed):** Durable background worker (`app/worker.py`), atomic job claiming with row-level locking, 30-second processing delay simulation, status transition to `PROCESSED`, exponential backoff retries, stale-lock recovery, and 38 passing automated tests.
-> - **Phase 4 (Completed):** Cloud deployment architecture (Render Blueprint & Dockerfile), process independence, worker platform health ping listener, secret safety audit, end-to-end verification, and public repository submission documentation.
+> - **Phase 4 (Completed):** Cloud deployment to Render (API + Worker), Supabase IPv4 connection pooler integration, live end-to-end cloud verification, and public repository submission documentation.
 
 ---
 
-## 2. Technology Stack
+## 2. Technology Stack & Technical Choices
 
+### Core Technologies
 - **Language & Runtime:** Python 3.12 (compatible with Python 3.11+)
-- **API Framework:** [FastAPI](https://fastapi.tiangolo.com)
+- **API Framework:** [FastAPI](https://fastapi.tiangolo.com) 0.115+
 - **ASGI Server:** [Uvicorn](https://www.uvicorn.org/)
-- **Background Worker:** Standalone Python process with `asyncio` event loop and graceful shutdown
+- **Background Worker:** Standalone Python process with `asyncio` event loop and graceful OS signal handling
 - **Configuration & Validation:** [Pydantic Settings](https://docs.pydantic.dev/latest/concepts/pydantic_settings/) & Pydantic v2
-- **Database ORM & Pooling:** [SQLAlchemy 2.x](https://www.sqlalchemy.org/) with [psycopg3](https://www.psycopg.org/psycopg3/)
-- **Target Database:** Supabase-hosted PostgreSQL (`confluencr_asgnmt` schema)
+- **Database ORM & Driver:** [SQLAlchemy 2.x](https://www.sqlalchemy.org/) with [psycopg3](https://www.psycopg.org/psycopg3/)
+- **Target Database:** Supabase-hosted PostgreSQL (`confluencr_asgnmt` schema) via Supavisor IPv4 Connection Pooler
 - **Testing:** [pytest](https://docs.pytest.org/), HTTPX TestClient, concurrent execution tests
+- **Deployment Platform:** [Render](https://render.com) (Decoupled Web Service + Worker instances)
+
+### Brief Explanation of Technical Choices
+
+#### 1. FastAPI & Asynchronous ASGI (over Flask / Django)
+- **Sub-50ms Webhook Acknowledgment:** The assessment requires webhooks to return `202 Accepted` within 500ms. FastAPI's asynchronous ASGI architecture processes requests with minimal overhead (~15–30ms server processing time), keeping the endpoint strictly non-blocking.
+- **Strict Payload Validation:** Pydantic v2 schemas provide compile-time and runtime validation (positive amounts, ISO-4217 currencies, non-empty account IDs), automatically generating compliant `422 Unprocessable Entity` responses without boilerplate.
+- **Self-Documenting API:** Automatically produces interactive OpenAPI Swagger UI at `/docs`.
+
+#### 2. PostgreSQL Queue (`FOR UPDATE SKIP LOCKED`) vs. Redis / RabbitMQ / Celery
+- **Eliminates the Dual-Write Problem:** In traditional setups with Redis or RabbitMQ, saving a transaction to SQL and pushing a job to Redis can fail midway, causing orphaned transactions or ghost jobs. By using the database table `processing_jobs` as the queue, saving the transaction and enqueuing the job occurs in the **exact same atomic ACID database transaction**.
+- **Zero Extra Infrastructure Costs:** Avoids paying for and managing external message brokers, staying 100% within the free tier.
+- **Deadlock-Free Concurrent Claiming:** PostgreSQL `FOR UPDATE SKIP LOCKED` allows multiple worker instances to query and lock available pending jobs simultaneously without deadlocks or claiming duplicate work.
+
+#### 3. Decoupled Multi-Process Architecture (API + Independent Worker)
+- **Process Isolation:** The API server and background worker run as distinct operating system processes. Heavy 30-second processing delays or worker crashes never block incoming webhook traffic or HTTP availability.
+- **Independent Scaling:** Web services and worker processes can scale independently based on traffic volume.
+
+#### 4. Supabase IPv4 Pooler & Connection Resilience
+- **Supavisor Integration:** Render's free tier lacks IPv6 outbound networking. We configured the database connection through Supabase's Supavisor IPv4 connection pooler (`aws-0-[region].pooler.supabase.com:5432`) with `sslmode=require` and `pool_pre_ping=True`, preventing connection drops and host resolution failures.
+- **Pool Sizing:** Configured with `pool_size=5` and `max_overflow=10` to stay safely within Supabase's database connection limits.
+
+#### 5. Fault-Tolerant Job Processing (Retries & Stale Locks)
+- **Exponential Backoff:** If external processing fails, the worker reschedules the job with exponential backoff (`base * 2^(attempts-1)`), preventing cascade failures.
+- **Stale-Lock Recovery:** If a worker process terminates abruptly while holding a job, other workers automatically detect jobs locked longer than `WORKER_STALE_LOCK_SECONDS` (120s) and reclaim them.
+- **Idempotency & Conflict Guard:** Webhook submissions check existing transactions at the database level. Identical duplicate payloads return idempotent 202 confirmations, while conflicting payloads (same ID with differing fields) immediately trigger a `409 Conflict`.
 
 ---
 
