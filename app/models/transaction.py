@@ -8,6 +8,7 @@ from sqlalchemy import (
     BigInteger,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     Numeric,
     SmallInteger,
@@ -95,6 +96,7 @@ class ProcessingJob(Base):
     __tablename__ = "processing_jobs"
     __table_args__ = (
         UniqueConstraint("transaction_id", name="uq_processing_jobs_transaction_id"),
+        Index("idx_processing_jobs_claim", "status", "available_at"),
         {"schema": SCHEMA_NAME},
     )
 

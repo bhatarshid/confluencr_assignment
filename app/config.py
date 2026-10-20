@@ -44,6 +44,7 @@ class Settings(BaseSettings):
         default=None,
         description="Full PostgreSQL connection string (e.g. postgresql+psycopg://user:pass@host:port/dbname)",
     )
+    # Database Connection Pool Settings
     DB_POOL_SIZE: int = Field(default=5, ge=1, le=50, description="Database connection pool size")
     DB_MAX_OVERFLOW: int = Field(default=10, ge=0, le=50, description="Maximum overflow connections")
     DB_POOL_TIMEOUT: int = Field(default=30, ge=1, description="Timeout waiting for connection from pool in seconds")
@@ -51,6 +52,44 @@ class Settings(BaseSettings):
         default=1800,
         ge=60,
         description="Recycle connections after N seconds to prevent stale dropped connections",
+    )
+
+    # Background Worker Settings
+    WORKER_POLL_INTERVAL_SECONDS: float = Field(
+        default=2.0,
+        ge=0.01,
+        le=60.0,
+        description="Interval in seconds between worker queue polling cycles",
+    )
+    WORKER_PROCESSING_DELAY_SECONDS: float = Field(
+        default=30.0,
+        ge=0.0,
+        le=300.0,
+        description="Simulated external processing delay in seconds (default 30s)",
+    )
+    WORKER_MAX_ATTEMPTS: int = Field(
+        default=3,
+        ge=1,
+        le=10,
+        description="Maximum execution attempts before marking job FAILED",
+    )
+    WORKER_RETRY_BASE_SECONDS: float = Field(
+        default=5.0,
+        ge=0.01,
+        le=300.0,
+        description="Base backoff interval in seconds for exponential retry calculation",
+    )
+    WORKER_STALE_LOCK_SECONDS: float = Field(
+        default=120.0,
+        ge=1.0,
+        le=3600.0,
+        description="Duration in seconds after which an in-progress lock is considered stale and recovered",
+    )
+    WORKER_BATCH_SIZE: int = Field(
+        default=1,
+        ge=1,
+        le=50,
+        description="Maximum number of jobs claimed per worker polling cycle",
     )
 
     @field_validator("DATABASE_URL")
