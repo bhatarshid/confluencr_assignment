@@ -1,0 +1,66 @@
+# ====================================================================
+# Render Blueprint Specification
+# Deploys both FastAPI Web API and Durable Background Worker
+# on Render Free Web Service instances ($0/month)
+# ====================================================================
+
+services:
+  # ------------------------------------------------------------------
+  # 1. Transaction Webhook API Service
+  # ------------------------------------------------------------------
+  - type: web
+    name: transaction-webhook-api
+    runtime: python
+    plan: free
+    region: oregon
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /
+    envVars:
+      - key: APP_NAME
+        value: "Transaction Webhook Service"
+      - key: APP_VERSION
+        value: "0.1.0"
+      - key: APP_ENV
+        value: "production"
+      - key: LOG_LEVEL
+        value: "INFO"
+      - key: DB_SCHEMA
+        value: "confluencr_asgnmt"
+      - key: DATABASE_URL
+        sync: false # Set securely in Render dashboard
+
+  # ------------------------------------------------------------------
+  # 2. Transaction Background Worker Service
+  # ------------------------------------------------------------------
+  - type: web
+    name: transaction-webhook-worker
+    runtime: python
+    plan: free
+    region: oregon
+    buildCommand: pip install -r requirements.txt
+    startCommand: python -m app.worker
+    healthCheckPath: /
+    envVars:
+      - key: APP_NAME
+        value: "Transaction Webhook Worker"
+      - key: APP_ENV
+        value: "production"
+      - key: LOG_LEVEL
+        value: "INFO"
+      - key: DB_SCHEMA
+        value: "confluencr_asgnmt"
+      - key: DATABASE_URL
+        sync: false # Set securely in Render dashboard
+      - key: WORKER_PROCESSING_DELAY_SECONDS
+        value: "30"
+      - key: WORKER_POLL_INTERVAL_SECONDS
+        value: "2"
+      - key: WORKER_MAX_ATTEMPTS
+        value: "3"
+      - key: WORKER_RETRY_BASE_SECONDS
+        value: "5"
+      - key: WORKER_STALE_LOCK_SECONDS
+        value: "120"
+      - key: WORKER_BATCH_SIZE
+        value: "1"
