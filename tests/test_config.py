@@ -50,8 +50,9 @@ def test_settings_sanitized_database_url_masks_password():
 
 
 def test_check_db_connectivity_unconfigured():
-    """Verify connectivity check returns unconfigured status when engine is None."""
-    connected, details = check_db_connectivity(engine=None)
+    """Verify connectivity check returns unconfigured status when database is not configured."""
+    unconfigured_settings = Settings(DATABASE_URL=None)
+    connected, details = check_db_connectivity(engine=None, settings=unconfigured_settings)
     assert not connected
     assert details["status"] == "UNCONFIGURED"
 

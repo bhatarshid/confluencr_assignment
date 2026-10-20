@@ -36,6 +36,10 @@ class Settings(BaseSettings):
     PORT: int = Field(default=8000, description="Port to bind server")
 
     # Database Configuration (Supabase PostgreSQL)
+    DB_SCHEMA: Optional[str] = Field(
+        default="confluencr_asgnmt",
+        description="PostgreSQL schema name for application tables",
+    )
     DATABASE_URL: Optional[SecretStr] = Field(
         default=None,
         description="Full PostgreSQL connection string (e.g. postgresql+psycopg://user:pass@host:port/dbname)",

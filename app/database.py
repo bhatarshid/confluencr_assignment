@@ -109,13 +109,23 @@ def session_scope() -> Generator[Session, None, None]:
         session.close()
 
 
-def check_db_connectivity(engine: Optional[Engine] = None) -> Tuple[bool, Dict[str, Any]]:
+def check_db_connectivity(
+    engine: Optional[Engine] = None,
+    settings: Optional[Settings] = None,
+) -> Tuple[bool, Dict[str, Any]]:
     """Perform explicit database connectivity check with safe sanitized output.
 
     Returns:
         (is_connected, details_dict)
     """
-    target_engine = engine or get_engine()
+    cfg = settings or get_settings()
+    if engine is None and not cfg.get_raw_database_url():
+        return False, {
+            "status": "UNCONFIGURED",
+            "message": "DATABASE_URL is not configured.",
+        }
+
+    target_engine = engine or get_engine(cfg)
     if target_engine is None:
         return False, {
             "status": "UNCONFIGURED",

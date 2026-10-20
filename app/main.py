@@ -7,7 +7,7 @@ from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api.health import router as health_router
+from app.api import health_router, transactions_router, webhooks_router
 from app.config import Settings, get_settings
 from app.database import check_db_connectivity, get_engine, reset_database_engine
 from app.logging_config import configure_logging, get_logger
@@ -70,9 +70,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_headers=["*"],
     )
 
-    # Global safe exception handler to avoid leaking secrets
+    # Global safe exception handler to avoid leaking secrets for unexpected server errors
     @app.exception_handler(Exception)
     async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+        if isinstance(exc, HTTPException):
+            return JSONResponse(
+                status_code=exc.status_code,
+                content=exc.detail if isinstance(exc.detail, dict) else {"error": "HttpError", "message": exc.detail},
+            )
         logger.exception("Unhandled server exception: %s", exc.__class__.__name__)
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -84,6 +89,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     # Mount routers
     app.include_router(health_router, prefix=cfg.API_PREFIX)
+    app.include_router(webhooks_router, prefix=cfg.API_PREFIX)
+    app.include_router(transactions_router, prefix=cfg.API_PREFIX)
 
     return app
 

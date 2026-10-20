@@ -3,9 +3,10 @@
 from datetime import datetime, timezone
 from typing import Any, Dict
 
-from fastapi import APIRouter, Response, status
+from fastapi import APIRouter, Depends, Response, status
 from pydantic import BaseModel, Field
 
+from app.config import Settings, get_settings
 from app.database import check_db_connectivity
 
 router = APIRouter(tags=["Health"])
@@ -54,10 +55,13 @@ def get_health() -> HealthResponse:
     summary="Service Readiness and Dependency Check",
     description="Checks downstream dependencies such as Supabase PostgreSQL database connectivity.",
 )
-def get_readiness(response: Response) -> ReadinessResponse:
+def get_readiness(
+    response: Response,
+    settings: Settings = Depends(get_settings),
+) -> ReadinessResponse:
     """Readiness probe checking database connectivity without leaking credentials."""
     utc_now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    is_connected, db_info = check_db_connectivity()
+    is_connected, db_info = check_db_connectivity(settings=settings)
 
     if not is_connected:
         response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
